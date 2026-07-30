@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_camera.h"
+#include <HTTPClient.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
-// Wi-Fi Bilgileri (Kendi internetine göre burayı değiştir)
 const char* ssid = "FiberHGW_ZYB471";
 const char* password = "urPeXAVphC4R";
 
-// AI-Thinker ESP32-CAM Pin Haritası
+const char* serverName = "http://192.168.1.178:5000/upload";
+
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -25,23 +28,19 @@ const char* password = "urPeXAVphC4R";
 #define PCLK_GPIO_NUM     22
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   Serial.println();
 
-  // 1. Wi-Fi Bağlantısını Başlat
   Serial.print("Wi-Fi agina baglaniliyor: ");
-  Serial.println(ssid);
   WiFi.begin(ssid, password);
-
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println("\nWi-Fi Baglantisi Basarili!");
-  Serial.print("Kameranin Agdaki IP Adresi: ");
-  Serial.println(WiFi.localIP());
 
-  // 2. Kamera Donanımını Kur
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -62,9 +61,8 @@ void setup() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG; // Veriyi Python'a JPEG olarak yollayacağız
+  config.pixel_format = PIXFORMAT_JPEG; 
   
-  // Çözünürlük ve Bellek Ayarı
   if(psramFound()){
     config.frame_size = FRAMESIZE_UXGA; 
     config.jpeg_quality = 10;
@@ -75,7 +73,6 @@ void setup() {
     config.fb_count = 1;
   }
 
-  // Kamerayı Başlat
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
     Serial.printf("Kamera baslatilamadi! Hata Kodu: 0x%x", err);
@@ -85,6 +82,29 @@ void setup() {
 }
 
 void loop() {
-  // Şimdilik boş. 
-  // Gelecek adımda fotoğraf çekim emrini Python'dan veya bir timer üzerinden alacağız.
+  if (WiFi.status() == WL_CONNECTED) {
+    camera_fb_t * fb = esp_camera_fb_get();
+    if (!fb) {
+      Serial.println("Kamera fotografi cekemedi!");
+      return;
+    }
+
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "image/jpeg");
+
+    Serial.println("Fotograf cekildi, sunucuya firlatiliyor...");
+    int httpResponseCode = http.POST(fb->buf, fb->len);
+
+    if (httpResponseCode > 0) {
+      Serial.printf("Sunucu Cevabi: %d (200 ise basarili!)\n", httpResponseCode);
+    } else {
+      Serial.printf("Gonderim Hatasi: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+
+    http.end();
+    esp_camera_fb_return(fb);
+  }
+  
+  delay(10000); 
 }
