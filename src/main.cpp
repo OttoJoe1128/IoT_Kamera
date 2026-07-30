@@ -27,6 +27,9 @@ const char* serverName = "http://192.168.1.178:5000/upload";
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// Fotoğraf çekme ve gönderme fonksiyonunu önden tanımlıyoruz
+void fotografCekVeGonder();
+
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
@@ -64,8 +67,8 @@ void setup() {
   config.pixel_format = PIXFORMAT_JPEG; 
   
   if(psramFound()){
-    config.frame_size = FRAMESIZE_UXGA; 
-    config.jpeg_quality = 10;
+    config.frame_size = FRAMESIZE_VGA; 
+    config.jpeg_quality = 12;
     config.fb_count = 2;
   } else {
     config.frame_size = FRAMESIZE_SVGA;
@@ -79,9 +82,21 @@ void setup() {
     return;
   }
   Serial.println("Kamera Lensi Basariyla Aktif Edildi ve Gormeye Hazir!");
+
+  // İSTEĞİN ÜZERİNE: Kart açılır açılmaz beklemeden ilk fotoğrafı HEMEN gönderir
+  fotografCekVeGonder();
 }
 
 void loop() {
+  // 15 Dakika beklet (15 * 60 * 1000 = 900000 milisaniye)
+  delay(900000); 
+
+  // Süre dolunca fotoğrafı çek ve gönder
+  fotografCekVeGonder();
+}
+
+// Ortak Fotoğraf Gönderme Fonksiyonu
+void fotografCekVeGonder() {
   if (WiFi.status() == WL_CONNECTED) {
     camera_fb_t * fb = esp_camera_fb_get();
     if (!fb) {
@@ -105,6 +120,4 @@ void loop() {
     http.end();
     esp_camera_fb_return(fb);
   }
-  
-  delay(10000); 
 }
